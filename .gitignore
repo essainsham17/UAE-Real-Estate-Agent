@@ -1,0 +1,16 @@
+# Environments
+llms_course_env/
+env/
+venv/
+
+# Secrets
+.env
+
+# Python caches
+__pycache__/
+*.pyc
+
+# Mac OS files
+.DS_Store
+
+.ipynb_checkpoints/

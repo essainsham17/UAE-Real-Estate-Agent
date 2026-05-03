@@ -1,0 +1,6 @@
+streamlit
+langchain-groq
+langgraph
+scikit-learn
+joblib
+python-dotenv
