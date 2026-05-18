@@ -19,4 +19,4 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          git push --force https://essainsham17/UAE-Real-Estate-Agent:$HF_TOKEN@huggingface.co/spaces/essainsham/UAE-Real-Estate-Agent main
+          git push --force https://essainsham17:$HF_TOKEN@huggingface.co/spaces/essainsham/UAE-Real-Estate-Agent main
