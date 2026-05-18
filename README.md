@@ -1,3 +1,11 @@
+title: UAE Real Estate Agent
+emoji: 🏢
+colorFrom: blue
+colorTo: green
+sdk: streamlit
+app_file: app.py
+pinned: false
+
 # 🏘️ Intelligent UAE Real Estate Advisory Agent
 
 An end-to-end, AI-powered real estate advisor designed to evaluate property prices and calculate mortgage estimates in the United Arab Emirates (Dubai & Abu Dhabi). 
