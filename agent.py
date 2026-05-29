@@ -59,7 +59,7 @@ class AgentState(TypedDict):
     City: str
 
     
-    predicted_price:float
+    predicted_price:int
     final_response:str
     monthly_rent:float
     annual_rent:float
@@ -136,7 +136,7 @@ def Predictor(state: AgentState):
     result=prediction_model.predict(df)
     final_result=float(np.exp(result[0]))
 
-    return {'predicted_price':final_result}
+    return {'predicted_price':int(final_result)}
 
 
 def Rental_calculator(state: AgentState):
