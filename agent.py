@@ -175,6 +175,9 @@ def Generate_Response(state: AgentState):
     agent_commission=state['agent_commission']
     total_amount=state.get('total_amount')
 
+    name="ESSA INSHAM"
+    num="+971 52 718 1331"
+    linkedin="https://www.linkedin.com/in/essa-insham"
 
     prompt=f""" you are a uae real estate rental advisor.respond in warm, helpfull and professional tone to  generate a professional response to the users query: {query}.
     compare the users expected price in the query with the actual model predicted price = {price}.
@@ -182,6 +185,7 @@ def Generate_Response(state: AgentState):
     also give the client information about monthly rent {monthly_rent}, annual rent:{annual_rent}, security_deposit of 5% of annual rent is: {security_deposit}
 and agent commission is 2% of annual rent is {agent_commission}.
 Also inform the client that the total upfront cost including security deposit and agent commission is {total_amount}
+also add my name:{name} , my mobile number: {num} and my linkedin:{linkedin}
     """
 
     response=llm.invoke(prompt)
