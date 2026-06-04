@@ -66,6 +66,7 @@ class AgentState(TypedDict):
     annual_rent:float
     security_deposit: float
     agent_commission: float
+    total_amount: float
 
 def classify_intent(state: AgentState):
     query=state.get('user_query')
@@ -158,8 +159,9 @@ def Rental_calculator(state: AgentState):
     Monthly_rent=Annual_rent/12
     security_deposit=Annual_rent*0.05
     agent_commission=Annual_rent*0.02
+    total_amount=Monthly_rent+security_deposit+agent_commission
     
-    return {"monthly_rent":Monthly_rent,'annual_rent':Annual_rent, 'security_deposit':security_deposit, 'agent_commission': agent_commission}
+    return {"monthly_rent":Monthly_rent,'annual_rent':Annual_rent, 'security_deposit':security_deposit, 'agent_commission': agent_commission,'total_amount':total_amount}
 
 
 
@@ -171,6 +173,7 @@ def Generate_Response(state: AgentState):
     annual_rent=state['annual_rent']
     security_deposit=state['security_deposit']
     agent_commission=state['agent_commission']
+    total_amount=state.get('total_amount')
 
 
     prompt=f""" you are a uae real estate rental advisor.respond in warm, helpfull and professional tone to  generate a professional response to the users query: {query}.
@@ -178,7 +181,7 @@ def Generate_Response(state: AgentState):
     also consider the location: {location}.
     also give the client information about monthly rent {monthly_rent}, annual rent:{annual_rent}, security_deposit of 5% of annual rent is: {security_deposit}
 and agent commission is 2% of annual rent is {agent_commission}.
-Also inform the client that the total upfront cost including security deposit and agent commission is {security_deposit + agent_commission}
+Also inform the client that the total upfront cost including security deposit and agent commission is {total_amount}
     """
 
     response=llm.invoke(prompt)
