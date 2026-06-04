@@ -48,6 +48,7 @@ class PropertyExtraction(BaseModel):
 class AgentState(TypedDict):
     user_query:str
     validation_status: str
+    user_intent:str
 
     
     Beds: int
@@ -66,6 +67,16 @@ class AgentState(TypedDict):
     security_deposit: float
     agent_commission: float
 
+def classify_intent(state: AgentState):
+    query=state.get('user_query')
+    intent=llm.invoke(f"Is this {query} a greeting/casual message or a property related query? Reply with only one word: 'greeting' or 'property")
+    if 'greeting' in intent.content.lower():
+        prompt=f"You are a UAE real estate rental advisor. The user said: '{query}'. Respond warmly and let them know you can help them find rental properties in the UAE"
+        res=llm.invoke(prompt)
+        return {'user_intent':'greeting','final_response':res.content}
+    elif 'property' in intent.content.lower():
+        return {'user_intent':'property'}
+    
 
 def extract_property_info(state: AgentState):
     text=state["user_query"]
@@ -110,10 +121,12 @@ def validate_inputs(state: AgentState):
         (Beds, 'How many bedroom are you looking for?'),
         (Type,"What type of Property are you looking for: choose from 'Apartment, Townhouse or Villa'"),
         (Furnishing,'Are you looking for Furnished or Unfurnished?'),
-        (Location,"Where do you want your Property.?")
+        (Location,"Which area or neighbourhood are you looking in? (e.g. Dubai Marina, Al Reem Island, Downtown Dubai)")
     ]
     for value,question in valid_list:
         if value == None:
+            prompt=f""" You are a professional UAE real estate advisor. Ask the client the following in a warm, natural, conversational way: {question}. Keep it to one sentence."""
+            question=llm.invoke(prompt).content
             return {'validation_status':'Incomplete', 'final_response':question}
     else:
         return {'validation_status':'Complete'}
@@ -140,9 +153,9 @@ def Predictor(state: AgentState):
 
 
 def Rental_calculator(state: AgentState):
-    Monthly_rent=state['predicted_price']
+    Annual_rent=state['predicted_price']
     
-    Annual_rent=Monthly_rent*12
+    Monthly_rent=Annual_rent/12
     security_deposit=Annual_rent*0.05
     agent_commission=Annual_rent*0.02
     
@@ -177,16 +190,24 @@ def rout_validator(state: AgentState):
         return(END)
     if state.get('validation_status') == 'Complete':
         return('predictor')
+    
+def intent_rout(state: AgentState):
+    if state.get('user_intent')=='greeting':
+        return (END)
+    if state.get('user_intent')=='property':
+        return ('extractor')
 
 workflow=StateGraph(AgentState)
 
+workflow.add_node('intent',classify_intent)
 workflow.add_node("extractor",extract_property_info)
 workflow.add_node("predictor",Predictor)
 workflow.add_node("responder",Generate_Response)
 workflow.add_node('Rental',Rental_calculator)
 workflow.add_node('Validator', validate_inputs)
 
-workflow.add_edge(START,"extractor")
+workflow.add_edge(START,'intent')
+workflow.add_conditional_edges('intent',intent_rout)
 workflow.add_edge("extractor","Validator")
 workflow.add_conditional_edges("Validator",rout_validator)
 workflow.add_edge("predictor","Rental")
