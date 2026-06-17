@@ -93,7 +93,7 @@ def extract_property_info(state: AgentState):
     existing property details are: Beds={Beds}, Baths={Baths}, Type={Type}, Area_in_sqft={Area_in_sqft}, 
     Furnishing={Furnishing}, Location={Location}, City={City}
     new user message= {text}
-    Only update fields explicitly mentioned in the new message. Keep everything else the same.
+    Only update a field if the new message explicitly mentions it. If a field already has a value keep it exactly as is. Never set a field back to None.
     """
     structured_llm=llm.with_structured_output(PropertyExtraction)
     extracted_content=structured_llm.invoke(context)
