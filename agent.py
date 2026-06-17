@@ -117,18 +117,21 @@ def validate_inputs(state: AgentState):
     Furnishing=state.get('Furnishing')
     Location=state.get('Location')
 
+    missing_fields=[]
+    if Beds==None:
+        missing_fields.append('Number of Bedrooms')
+    if Type==None:
+        missing_fields.append('Property Type: Apartment, Townhouse or Villa')
+    if Furnishing==None:
+        missing_fields.append('furnishing Preference: Furnished or Unfurnished')
+    if Location==None:
+        missing_fields.append('preferred Location or neighbourhood')
 
-    valid_list=[
-        (Beds, 'How many bedroom are you looking for?'),
-        (Type,"What type of Property are you looking for: choose from 'Apartment, Townhouse or Villa'"),
-        (Furnishing,'Are you looking for Furnished or Unfurnished?'),
-        (Location,"Which area or neighbourhood are you looking in? (e.g. Dubai Marina, Al Reem Island, Downtown Dubai)")
-    ]
-    for value,question in valid_list:
-        if value == None:
-            prompt=f""" You are a professional UAE real estate advisor. Ask the client the following in a warm, natural, conversational way: {question}. Keep it to one sentence."""
-            question=llm.invoke(prompt).content
-            return {'validation_status':'Incomplete', 'final_response':question}
+    if missing_fields:
+        missing_str=', '.join(missing_fields)
+        prompt=f""" You are a professional UAE real estate advisor. Ask the client the following in a warm, natural, conversational way: {missing_str}. Keep it to one sentence."""
+        question=llm.invoke(prompt).content
+        return {'validation_status':'Incomplete', 'final_response':question}
     else:
         return {'validation_status':'Complete'}
 
@@ -185,7 +188,7 @@ def Generate_Response(state: AgentState):
     also give the client information about monthly rent {monthly_rent}, annual rent:{annual_rent}, security_deposit of 5% of annual rent is: {security_deposit}
 and agent commission is 2% of annual rent is {agent_commission}.
 Also inform the client that the total upfront cost including security deposit and agent commission is {total_amount}
-also add my name:{name} , my mobile number: {num} and my linkedin:{linkedin}
+also add my name:{name} , my mobile number: {num} and my linkedin:{linkedin}.
     """
 
     response=llm.invoke(prompt)
