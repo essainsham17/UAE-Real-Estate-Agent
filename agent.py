@@ -12,6 +12,10 @@ from langgraph.checkpoint.memory import MemorySaver
 memory=MemorySaver()
 load_dotenv()
 GROQ_API_KEY=os.getenv("GROQ_API_KEY")
+os.environ["LANGCHAIN_API_KEY"]=os.getenv("LANGCHAIN_API_KEY")
+os.environ["LANGCHAIN_ENDPOINT"]=os.getenv("LANGCHAIN_ENDPOINT")
+os.environ["LANGCHAIN_TRACING_V2"]=os.getenv("LANGCHAIN_TRACING_V2")
+os.environ["LANGHAIN_PROJECT"]=os.getenv("LANGHAIN_PROJECT")
 
 llm=ChatGroq(model='llama-3.3-70b-versatile', temperature=0)
 prediction_model=joblib.load("price_prediction_model.pkl")
