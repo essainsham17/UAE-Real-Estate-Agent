@@ -8,6 +8,9 @@ from langgraph.graph import StateGraph, START,END
 from dotenv import load_dotenv
 from pydantic import BaseModel , Field
 from langgraph.checkpoint.memory import MemorySaver
+from langchain_tavily import TavilySearch
+import datetime
+from datetime import date
 
 memory=MemorySaver()
 load_dotenv()
@@ -16,6 +19,11 @@ os.environ["LANGCHAIN_API_KEY"]=os.getenv("LANGCHAIN_API_KEY")
 os.environ["LANGCHAIN_ENDPOINT"]=os.getenv("LANGCHAIN_ENDPOINT")
 os.environ["LANGCHAIN_TRACING_V2"]=os.getenv("LANGCHAIN_TRACING_V2")
 os.environ["LANGCHAIN_PROJECT"]=os.getenv("LANGHAIN_PROJECT")
+
+search_tool=TavilySearch(
+    max_results=5,
+    api_key=os.getenv("TAVILY_API_KEY")
+)
 
 llm=ChatGroq(model='llama-3.3-70b-versatile', temperature=0)
 prediction_model=joblib.load("price_prediction_model.pkl")
@@ -74,13 +82,24 @@ class AgentState(TypedDict):
 
 def classify_intent(state: AgentState):
     query=state.get('user_query')
-    intent=llm.invoke(f"Is this {query} a greeting/casual message or a property related query? Reply with only one word: 'greeting' or 'property")
+    classification_prompt = f"""Analyze the user query: '{query}'. 
+    - If they are looking to rent/find a specific property, or providing details like bedrooms and location, reply 'property'.
+    - If they are asking for market news, geopolitical impacts, trends, or general real estate information, reply 'research'.
+    - If it's just a hello/greeting, reply 'greeting'.
+    Reply with ONLY ONE word."""
+    intent=llm.invoke(classification_prompt)
+
     if 'greeting' in intent.content.lower():
         prompt=f"You are a UAE real estate rental advisor. The user said: '{query}'. Respond warmly and let them know you can help them find rental properties in the UAE"
         res=llm.invoke(prompt)
         return {'user_intent':'greeting','final_response':res.content}
     elif 'property' in intent.content.lower():
         return {'user_intent':'property'}
+    elif 'research' in intent.content.lower():
+        return {'user_intent':'research'}
+    else:
+        result=llm.invoke(f"i could not classify the user intent for the query: '{query}'. Please respond with a warm, professional message to the user, letting them know you can help them find rental properties in the UAE.")
+        return {'final_response':result.content}
     
 
 def extract_property_info(state: AgentState):
@@ -198,18 +217,47 @@ also add my name:{name} , my mobile number: {num} and my linkedin:{linkedin}.
     response=llm.invoke(prompt)
 
     return {'final_response':response.content}
+def research(state: AgentState):
+    query=state['user_query']
+    search_response=search_tool.invoke({"query":query})
+    results=search_response.get('results', []) if isinstance(search_response, dict) else search_response
+    if not results:
+        return {'final_response':"No results found for your query. Try rephrasing your question or ask about a different topic."}
+    combined_context = "\n\n".join(
+        f"Source {i+1} ({r.get('title', 'Untitled')}): {r.get('content', '')}"
+        for i, r in enumerate(results)
+    )
+    today_str = date.today().strftime("%B %d, %Y")
+
+    prompt= f"""You are a UAE real estate market advisor. Today's date is {today_str}.
+
+A client asked: '{query}'
+
+Here is recent information gathered from multiple sources:
+{combined_context}
+
+Using only the information above, write a clear, well-rounded answer that directly addresses the client's question.
+Start your response by referencing today's date, e.g. "As of {today_str}, ...".
+Synthesize the sources into a coherent response rather than quoting any single one. If sources disagree, mention both
+perspectives. Keep it professional and concise (3-5 sentences)."""
+    response=llm.invoke(prompt)
+    return {'final_response':response.content}
 
 def rout_validator(state: AgentState):
-    if state.get('validation_status') == 'Incomplete':
+    if state.get('validation_status').lower() == 'incomplete':
         return(END)
-    if state.get('validation_status') == 'Complete':
+    if state.get('validation_status').lower() == 'complete':
         return('predictor')
+    if state.get('validation_status') == None:
+        return('Validator')
     
 def intent_rout(state: AgentState):
-    if state.get('user_intent')=='greeting':
+    if state.get('user_intent').lower() == 'greeting':
         return (END)
-    if state.get('user_intent')=='property':
+    if state.get('user_intent').lower() == 'property':
         return ('extractor')
+    if state.get('user_intent').lower() == 'research':
+        return ('research')
 
 workflow=StateGraph(AgentState)
 
@@ -219,9 +267,11 @@ workflow.add_node("predictor",Predictor)
 workflow.add_node("responder",Generate_Response)
 workflow.add_node('Rental',Rental_calculator)
 workflow.add_node('Validator', validate_inputs)
+workflow.add_node('research',research)
 
 workflow.add_edge(START,'intent')
 workflow.add_conditional_edges('intent',intent_rout)
+workflow.add_edge("research", END)
 workflow.add_edge("extractor","Validator")
 workflow.add_conditional_edges("Validator",rout_validator)
 workflow.add_edge("predictor","Rental")
@@ -229,5 +279,4 @@ workflow.add_edge("Rental","responder")
 workflow.add_edge('responder',END)
 
 real_estate_agent=workflow.compile(checkpointer=memory)
-
 
