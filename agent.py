@@ -34,14 +34,14 @@ class PropertyExtraction(BaseModel):
         default=None,
         description="the number of bedrooms. set the default to None if user did'nt specify"
     )
-    Baths: int = Field(
+    Baths: Optional[int] = Field(
         default=2, description="the number of bathrooms. if not specified assume bedrooms+1"
     )
     Type: Optional[str] =Field(
         default=None,
         description="the type of property (eg: Villa,Apartment). default set to None if not specified"
     )
-    Area_in_sqft: float = Field(
+    Area_in_sqft: Optional[float] = Field(
         default=750, description="Total area in square feet. If not explicitly mentioned, estimate it by multiplying the number of Bedrooms by 750, plus 24."
     )
     Furnishing: Optional[str] = Field(
@@ -52,7 +52,7 @@ class PropertyExtraction(BaseModel):
         default=None,
         description="the exact location of the property. if not mentioned return None"
     )
-    City: str = Field(
+    City: Optional[str] = Field(
         default="Dubai", 
         description="The city. Default to 'Dubai'."
     )
@@ -82,11 +82,20 @@ class AgentState(TypedDict):
 
 def classify_intent(state: AgentState):
     query=state.get('user_query')
-    classification_prompt = f"""Analyze the user query: '{query}'. 
-    - If they are looking to rent/find a specific property, or providing details like bedrooms and location, reply 'property'.
-    - If they are asking for market news, geopolitical impacts, trends, or general real estate information, reply 'research'.
-    - If it's just a hello/greeting, reply 'greeting'.
-    Reply with ONLY ONE word."""
+    Location=state.get('Location')
+    Beds=state.get('Beds')
+    Type=state.get('Type')
+    classification_prompt = f"""Analyze the user query: '{query}'.
+    
+
+Existing property details already collected: Location={Location}, Beds={Beds}, Type={Type}
+
+- If existing details are already filled, it means a property conversation is in progress — classify as 'property'
+- If they are looking to rent/find a specific property, classify as 'property'
+- If they are asking for market news, trends or general real estate information, classify as 'research'
+- If it's just a greeting, classify as 'greeting'
+
+Reply with ONLY ONE word."""
     intent=llm.invoke(classification_prompt)
 
     if 'greeting' in intent.content.lower():
@@ -112,26 +121,34 @@ def extract_property_info(state: AgentState):
     Location=state.get('Location')
     City=state.get('City')
 
-    context=f"""
-    existing property details are: Beds={Beds}, Baths={Baths}, Type={Type}, Area_in_sqft={Area_in_sqft}, 
-    Furnishing={Furnishing}, Location={Location}, City={City}
-    new user message= {text}
-    Only update a field if the new message explicitly mentions it. If a field already has a value keep it exactly as is. Never set a field back to None.
-    """
-    structured_llm=llm.with_structured_output(PropertyExtraction)
+    context = f"""
+Extract property details from the user message and return a JSON object.
+
+Existing property details: Beds={Beds}, Baths={Baths}, Type={Type}, Area_in_sqft={Area_in_sqft}, 
+Furnishing={Furnishing}, Location={Location}, City={City}
+
+New user message: {text}
+If the new user message explicitly mentions any of the property details (Beds, Baths, Type, Area_in_sqft, Furnishing, Location, City), update that field with the new value.
+If the user is saying fully furnished or partially furnished, set Furnishing to Furnished. If they say unfurnished, set it to Unfurnished.
+Only update a field if the new message explicitly mentions it. If a field already has a value keep it exactly as is. Never set a field back to None.
+
+Return ONLY a valid JSON object with these exact keys: Beds, Baths, Type, Area_in_sqft, Furnishing, Location, City.
+"""
+    structured_llm=llm.with_structured_output(PropertyExtraction,method='json_mode')
     extracted_content=structured_llm.invoke(context)
     
-    return (
-        {
-        'Beds':extracted_content.Beds,
-        'Baths':extracted_content.Baths,
-        'Type':extracted_content.Type,
-        'Area_in_sqft':extracted_content.Area_in_sqft,
-        'Furnishing':extracted_content.Furnishing,
-        'Location':extracted_content.Location,
-        'City':extracted_content.City
-        }
-    )
+    beds = extracted_content.Beds or state.get('Beds')
+    baths = extracted_content.Baths or state.get('Baths') or (beds + 1 if beds else 2)
+    area = extracted_content.Area_in_sqft or state.get('Area_in_sqft') or (beds * 750 + 24 if beds else 750)
+    return {
+    'Beds': beds,
+    'Baths': baths,
+    'Type': (extracted_content.Type or state.get('Type') or '').title() or None,
+    'Area_in_sqft': area,
+    'Furnishing': extracted_content.Furnishing or state.get('Furnishing'),
+    'Location': extracted_content.Location or state.get('Location'),
+    'City': extracted_content.City or state.get('City') or 'Dubai'  # always falls back to Dubai
+}
 
     
 def validate_inputs(state: AgentState):
@@ -139,6 +156,8 @@ def validate_inputs(state: AgentState):
     Type=state.get('Type')
     Furnishing=state.get('Furnishing')
     Location=state.get('Location')
+    print(f"DEBUG - Beds: {state.get('Beds')}, Type: {state.get('Type')}, "
+          f"Furnishing: {state.get('Furnishing')}, Location: {state.get('Location')}")
 
     missing_fields=[]
     if Beds==None:
@@ -152,7 +171,8 @@ def validate_inputs(state: AgentState):
 
     if missing_fields:
         missing_str=', '.join(missing_fields)
-        prompt=f""" You are a professional UAE real estate advisor. Ask the client the following in a warm, natural, conversational way: {missing_str}. Keep it to one sentence."""
+        prompt=f""" You are a professional UAE real estate advisor. Ask the client the following in a warm, natural, conversational way: {missing_str}. Keep it to one sentence.
+        if the user has already provided some of the missing information in their previous query, do not ask for it again. Only ask for what is still missing. For example, if they already mentioned they want a furnished property, do not ask about furnishing again. Just ask about the remaining missing details."""
         question=llm.invoke(prompt).content
         return {'validation_status':'Incomplete', 'final_response':question}
     else:
@@ -185,7 +205,7 @@ def Rental_calculator(state: AgentState):
     Monthly_rent=Annual_rent/12
     security_deposit=Annual_rent*0.05
     agent_commission=Annual_rent*0.02
-    total_amount=Monthly_rent+security_deposit+agent_commission
+    total_amount=security_deposit+agent_commission
     
     return {"monthly_rent":Monthly_rent,'annual_rent':Annual_rent, 'security_deposit':security_deposit, 'agent_commission': agent_commission,'total_amount':total_amount}
 
