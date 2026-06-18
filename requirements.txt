@@ -6,3 +6,4 @@ joblib
 python-dotenv
 pydantic
 tavily-python
+langchain-tavily
