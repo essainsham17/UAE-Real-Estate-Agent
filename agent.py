@@ -11,6 +11,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langchain_tavily import TavilySearch
 import datetime
 from datetime import date
+import json
 
 memory=MemorySaver()
 load_dotenv()
@@ -18,7 +19,7 @@ GROQ_API_KEY=os.getenv("GROQ_API_KEY")
 os.environ["LANGCHAIN_API_KEY"]=os.getenv("LANGCHAIN_API_KEY")
 os.environ["LANGCHAIN_ENDPOINT"]=os.getenv("LANGCHAIN_ENDPOINT")
 os.environ["LANGCHAIN_TRACING_V2"]=os.getenv("LANGCHAIN_TRACING_V2")
-os.environ["LANGCHAIN_PROJECT"]=os.getenv("LANGHAIN_PROJECT")
+os.environ["LANGCHAIN_PROJECT"]=os.getenv("LANGCHAIN_PROJECT")
 
 search_tool=TavilySearch(
     max_results=5,
@@ -94,6 +95,7 @@ Existing property details already collected: Location={Location}, Beds={Beds}, T
 - If they are looking to rent/find a specific property, classify as 'property'
 - If they are asking for market news, trends or general real estate information, classify as 'research'
 - If it's just a greeting, classify as 'greeting'
+- If the user is asking for contact details or how to proceed with renting, classify as 'contact'
 
 Reply with ONLY ONE word."""
     intent=llm.invoke(classification_prompt)
@@ -106,6 +108,8 @@ Reply with ONLY ONE word."""
         return {'user_intent':'property'}
     elif 'research' in intent.content.lower():
         return {'user_intent':'research'}
+    elif 'contact' in intent.content.lower():
+        return {'user_intent':'contact'}
     else:
         result=llm.invoke(f"i could not classify the user intent for the query: '{query}'. Please respond with a warm, professional message to the user, letting them know you can help them find rental properties in the UAE.")
         return {'final_response':result.content}
@@ -156,8 +160,6 @@ def validate_inputs(state: AgentState):
     Type=state.get('Type')
     Furnishing=state.get('Furnishing')
     Location=state.get('Location')
-    print(f"DEBUG - Beds: {state.get('Beds')}, Type: {state.get('Type')}, "
-          f"Furnishing: {state.get('Furnishing')}, Location: {state.get('Location')}")
 
     missing_fields=[]
     if Beds==None:
@@ -210,6 +212,18 @@ def Rental_calculator(state: AgentState):
     return {"monthly_rent":Monthly_rent,'annual_rent':Annual_rent, 'security_deposit':security_deposit, 'agent_commission': agent_commission,'total_amount':total_amount}
 
 
+def format_aed(amount):
+    return f"AED {round(amount):,}"
+
+def contact_details(state: AgentState):
+    return {
+        "final_response": (
+            "You can contact Essa Insham here:\n"
+            "- Mobile: +971 52 718 1331\n"
+            "- LinkedIn: https://www.linkedin.com/in/essa-insham\n\n"
+            "If you'd like, I can also help you prepare the key details to share before contacting the agent."
+        )
+    }
 
 def Generate_Response(state: AgentState):
     query=state['user_query']
@@ -221,47 +235,123 @@ def Generate_Response(state: AgentState):
     agent_commission=state['agent_commission']
     total_amount=state.get('total_amount')
 
-    name="ESSA INSHAM"
-    num="+971 52 718 1331"
-    linkedin="https://www.linkedin.com/in/essa-insham"
+    annual_rent_display = format_aed(annual_rent)
+    monthly_rent_display = format_aed(monthly_rent)
+    security_deposit_display = format_aed(security_deposit)
+    agent_commission_display = format_aed(agent_commission)
+    total_amount_display = format_aed(total_amount)
 
-    prompt=f""" you are a uae real estate rental advisor.respond in warm, helpfull and professional tone to  generate a professional response to the users query: {query}.
-    compare the users expected price in the query with the actual model predicted price = {price}.
-    also consider the location: {location}.
-    also give the client information about monthly rent {monthly_rent}, annual rent:{annual_rent}, security_deposit of 5% of annual rent is: {security_deposit}
-and agent commission is 2% of annual rent is {agent_commission}.
-Also inform the client that the total upfront cost including security deposit and agent commission is {total_amount}
-also add my name:{name} , my mobile number: {num} and my linkedin:{linkedin}.
+    prompt=f""" You are a warm, helpful, and professional UAE real estate rental advisor interacting with a client in a conversational chat interface.
+
+Tone and format rules:
+- Aim for 180-250 words. Never exceed 300 words.
+- Start naturally by acknowledging the user's request in one short sentence. Do not introduce the agent by name unless the user asks for contact details or a viewing.- Do not format the response as an email.
+- Include one short neighborhood insight when a location is known like a short paragraph. The insight should explain why the area may fit the user’s lifestyle or budget, without exaggerating or making unsupported claims.
+- Do not use generic praise like "beautiful", "amazing", "perfect", or "luxury" unless the specific location context supports it. Prefer practical details: commute access, family-friendliness, waterfront lifestyle, schools, malls, quieter community, business districts, or value-for-money.
+- add the paragraph about the neighbourhood in a single paragraph, not a list before the financial breakdown as a separate paragraph.
+- Do not use greetings like "Dear client" or sign-offs like "Best regards".
+- Do not repeat financial figures, contact details, assumptions, or recommendations.
+- Avoid generic repeated phrases like "popular area". Give one practical reason the location fits the user.
+
+Pricing policy:
+- Describe the model output as an estimated annual rent generated from the trained property-price model using the user's requirements.
+- Do not claim this guarantees live market availability.
+- If the user mentioned a budget or expected rent, compare it briefly. Otherwise do not invent a comparison.
+- if providing a financial breakdown, use the currency AED and round all figures to the nearest whole number.
+- Always format monetary amounts in AED using rounded whole numbers and digit grouping, e.g., AED 223,513.
+- This is an estimate from the trained property-price model, so treat it as guidance rather than live availability.
+
+User context:
+- User query: "{query}"
+- Location: {location}
+- Estimated annual rent from model: {price}
+
+Financial breakdown:
+Display exactly once using these bullets:
+* Annual Rent: {annual_rent_display}
+* Monthly Rent: {monthly_rent_display}
+* Security Deposit: {security_deposit_display}
+* Agent Commission: {agent_commission_display}
+* Estimated Upfront Cost: {total_amount_display}
+
+- If the user is exploring prices or areas, ask one useful refinement question.
+- If the user shows action intent, such as asking about viewing, availability, negotiation, agent help, or next steps, ask whether they would like the agent contact details.
     """
 
     response=llm.invoke(prompt)
 
     return {'final_response':response.content}
+
+
 def research(state: AgentState):
     query=state['user_query']
     search_response=search_tool.invoke({"query":query})
     results=search_response.get('results', []) if isinstance(search_response, dict) else search_response
     if not results:
         return {'final_response':"No results found for your query. Try rephrasing your question or ask about a different topic."}
+    
+    blocked_domains = ["instagram.com", "reddit.com", "tiktok.com", "facebook.com", "x.com", "twitter.com", "linkedin.com"]
+    source_lines = []
+    informal_lines = []
+    for r in results:
+        title = r.get('title', 'Untitled')
+        url = r.get('url', 'No URL')
+        if not url:
+            continue
+        line = f"- {title}: {url}"
+        if any(domain in url for domain in blocked_domains):
+            informal_lines.append(line)
+        else:
+            source_lines.append(line)
+
+    source_lines=source_lines[:3]  # Limit to top 3 sources
+    informal_lines=informal_lines[:2]  # Limit to top 2 informal sources
+
+
     combined_context = "\n\n".join(
-        f"Source {i+1} ({r.get('title', 'Untitled')}): {r.get('content', '')}"
+        f"""source:{i+1}\n
+        Title: {r.get('title', 'Untitled')}\n
+        URL: {r.get('url', 'No URL')}\n
+        content: {r.get('content', 'No content available')}\n"""
         for i, r in enumerate(results)
     )
     today_str = date.today().strftime("%B %d, %Y")
+    prompt = f"""
+You are a UAE real estate market advisor. Today's date is {today_str}.
 
-    prompt= f"""You are a UAE real estate market advisor. Today's date is {today_str}.
+A client asked: "{query}"
 
-A client asked: '{query}'
-
-Here is recent information gathered from multiple sources:
+Here is recent information gathered from multiple search results:
 {combined_context}
 
-Using only the information above, write a clear, well-rounded answer that directly addresses the client's question.
-Start your response by referencing today's date, e.g. "As of {today_str}, ...".
-Synthesize the sources into a coherent response rather than quoting any single one. If sources disagree, mention both
-perspectives. Keep it professional and concise (3-5 sentences)."""
+Write a clear, balanced market summary that directly answers the client's question.
+
+Rules:
+- Use only the information provided in the search results above.
+- Keep the answer professional and concise, around 3-5 sentences.
+- Start with "As of {today_str}, ..."
+- Synthesize the sources into a coherent answer instead of quoting one source.
+- If stronger sources disagree, mention both perspectives briefly.
+- Treat Instagram, Reddit, TikTok, Facebook, and X as informal/unverified sources.
+- Do not use informal/unverified sources as the main basis for factual claims.
+- If informal sources suggest a different view, describe it cautiously as informal or unverified.
+- Do not include source URLs in the answer body.
+- Do not include a "Sources" section.
+- Do not list source titles in the answer body.
+- The application will add the source list separately after your answer.
+"""
+    
+
+
     response=llm.invoke(prompt)
-    return {'final_response':response.content}
+    final=response.content
+    if source_lines:
+        final += "\n\nSources:\n" + "\n".join(source_lines)
+    if informal_lines:
+        final += "\n\nInformal/unverified sources:\n" + "\n".join(informal_lines)
+    
+
+    return {'final_response':final}
 
 def rout_validator(state: AgentState):
     if state.get('validation_status').lower() == 'incomplete':
@@ -270,7 +360,9 @@ def rout_validator(state: AgentState):
         return('predictor')
     if state.get('validation_status') == None:
         return('Validator')
-    
+
+
+
 def intent_rout(state: AgentState):
     if state.get('user_intent').lower() == 'greeting':
         return (END)
@@ -278,6 +370,10 @@ def intent_rout(state: AgentState):
         return ('extractor')
     if state.get('user_intent').lower() == 'research':
         return ('research')
+    if state.get('user_intent').lower() == 'contact':
+        return ('contact')
+    else:
+        return (END)
 
 workflow=StateGraph(AgentState)
 
@@ -287,6 +383,7 @@ workflow.add_node("predictor",Predictor)
 workflow.add_node("responder",Generate_Response)
 workflow.add_node('Rental',Rental_calculator)
 workflow.add_node('Validator', validate_inputs)
+workflow.add_node('contact',contact_details)
 workflow.add_node('research',research)
 
 workflow.add_edge(START,'intent')
@@ -296,6 +393,7 @@ workflow.add_edge("extractor","Validator")
 workflow.add_conditional_edges("Validator",rout_validator)
 workflow.add_edge("predictor","Rental")
 workflow.add_edge("Rental","responder")
+workflow.add_edge('contact',END)
 workflow.add_edge('responder',END)
 
 real_estate_agent=workflow.compile(checkpointer=memory)
