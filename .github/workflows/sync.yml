@@ -24,9 +24,9 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           # Login non-interactively
-          huggingface-cli login --token $HF_TOKEN
+          hf auth login --token $HF_TOKEN
           
           # Upload the current directory to the Space
-          huggingface-cli upload essainsham/UAE-Real-Estate-Agent . \
+          hf upload essainsham/UAE-Real-Estate-Agent . \
             --repo-type=space \
             --commit-message="Sync from GitHub Actions via CLI"
