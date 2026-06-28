@@ -1,0 +1,2 @@
+This is a personal portfolio project.
+project name is UAE REAL ESTATE AGENT. a multi agent uae real estate assistant with 9 nodes. never write anything directly to the project. only give me instructions and i will manually edit it in vs code myself. learning things by building this project. Never change anything. this folder is only for reference of what i have built till now. DO not spoon feed me the codes.
