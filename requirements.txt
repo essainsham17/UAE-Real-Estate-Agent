@@ -7,3 +7,4 @@ python-dotenv
 pydantic
 tavily-python
 langchain-tavily
+langchain-huggingface
