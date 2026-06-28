@@ -14,7 +14,7 @@ jobs:
           fetch-depth: 0
           # We keep lfs: false because the CLI upload will handle large files 
           # via the HF Hub API directly, bypassing the need for git-lfs tracking.
-          lfs: false
+          lfs: True
           
       - name: Install Hugging Face Hub with XET support
         run: pip install -U "huggingface_hub[hf_xet]"
