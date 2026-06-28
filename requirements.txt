@@ -9,4 +9,4 @@ tavily-python
 langchain-tavily
 langchain-huggingface
 langchain-community
-chroma
+chromadb
